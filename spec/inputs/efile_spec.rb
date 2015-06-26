@@ -4,7 +4,7 @@ require "logstash/devutils/rspec/spec_helper"
 require "tempfile"
 require "stud/temporary"
 
-describe "inputs/file" do
+describe "inputs/efile" do
 
   delimiter = (LogStash::Environment.windows? ? "\r\n" : "\n")
 
@@ -14,7 +14,7 @@ describe "inputs/file" do
 
     conf = <<-CONFIG
       input {
-        file {
+        efile {
           type => "blah"
           path => "#{tmpfile_path}"
           sincedb_path => "#{sincedb_path}"
@@ -139,7 +139,7 @@ describe "inputs/file" do
 
     conf = <<-CONFIG
       input {
-        file {
+        efile {
           type => "blah"
           path => "#{tmpfile_path}"
           start_position => "beginning"

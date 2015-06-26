@@ -13,8 +13,8 @@ require "socket" # for Socket.gethostname
 #
 # Files are followed in a manner similar to `tail -0F`. File rotation
 # is detected and handled by this input.
-class LogStash::Inputs::File < LogStash::Inputs::Base
-  config_name "file"
+class LogStash::Inputs::Efile < LogStash::Inputs::Base
+  config_name "efile"
 
   # TODO(sissel): This should switch to use the `line` codec by default
   # once file following
@@ -140,6 +140,7 @@ class LogStash::Inputs::File < LogStash::Inputs::Base
         event["host"] = @host if !event.include?("host")
         event["path"] = path if !event.include?("path")
         decorate(event)
+        puts event
         queue << event
       end
     end
