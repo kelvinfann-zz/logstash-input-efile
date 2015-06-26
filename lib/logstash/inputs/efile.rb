@@ -132,7 +132,6 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     @tail = FileWatch::Tail.new(@tail_config)
     @tail.logger = @logger
     @path.each { |path| @tail.tail(path) }
-
     @tail.subscribe do |path, line|
       @logger.debug? && @logger.debug("Received line", :path => path, :text => line)
       @codec.decode(line) do |event|
