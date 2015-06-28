@@ -4,6 +4,7 @@ require "logstash/namespace"
 
 require "pathname"
 require "socket" # for Socket.gethostname
+require "securerandom"
 
 # Stream events from files.
 #
@@ -68,13 +69,24 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   # set the new line delimiter, defaults to "\n"
   config :delimiter, :validate => :string, :default => "\n"
 
+  # set where the offsets are stored
+  config :offset_path, :validate => :string, :default => ""
+
   public
   def register
     require "addressable/uri"
     require "filewatch/tail"
     require "digest/md5"
+    require "metriks"
+    require "thread_safe"
     @logger.info("Registering file input", :path => @path)
     @host = Socket.gethostname.force_encoding(Encoding::UTF_8)
+
+    @random_key_prefix = SecureRandom.hex
+    @offsets = ThreadSafe::Cache.new { |h,k| h[k] = Metriks.counter(counter_key(k)) }
+    if @offset_path != "" and File.exist?(@offset_path)
+      deseralize_offsets
+    end
 
     @tail_config = {
       :exclude => @exclude,
@@ -138,13 +150,18 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         event["[@metadata][path]"] = path
         event["host"] = @host if !event.include?("host")
         event["path"] = path if !event.include?("path")
+        event["offset"] = @offsets[event['path'].to_s].count
         decorate(event)
-        puts event
         queue << event
+        @offsets[event['path'].to_s].increment
       end
     end
     finished
   end # def run
+
+  def counter_key(key)
+    "#{@random_key_prefix}_#{key}"
+  end # def metric_key
 
   public
   def teardown
@@ -153,5 +170,34 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       @tail.quit
       @tail = nil
     end
+    if @offset_path != ""
+      seralize_offsets
+    end
   end # def teardown
+
+  private
+  def seralize_offsets
+    open(@offset_path, 'a') do |f|
+      @offsets.each_pair do |path, counter|
+        f.puts "#{counter.count}:#{path}"
+        @offsets.delete(path)
+      end
+    end
+  end # seralize_offsets
+
+  private 
+  def deseralize_offsets
+    open(@offset_path, 'r') do |f|
+      f.each_line do |line|
+        parsed_line = line.split(':', 2)
+        count = parsed_line[0].to_i
+        name = parsed_line[1]
+        @offsets[name].clear
+        count.downto(1) { |_| @offsets[name].increment }
+        puts @offsets[name].count
+      end
+    end
+    File.delete(@offset_path)
+  end # deseralize_offsets
+
 end # class LogStash::Inputs::File
