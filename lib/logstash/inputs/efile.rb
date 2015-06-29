@@ -67,6 +67,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   config :start_position, :validate => [ "beginning", "end"], :default => "end"
 
   # set the new line delimiter, defaults to "\n"
+  # TODO: Make sure of the delimiter byte size
   config :delimiter, :validate => :string, :default => "\n"
 
   # set where the offsets are stored
