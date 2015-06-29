@@ -192,6 +192,8 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       @offsets.each_pair do |path, counter|
         f.puts "#{path}:#{counter.count}"
         @offsets.delete(path)
+        stat = File::Stat.new(path)
+        puts @tail.sincedb_record_uid(path, stat)
       end
     end
     @offset_path = ""
