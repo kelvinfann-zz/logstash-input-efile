@@ -54,7 +54,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
   # How often (in seconds) to write a since database with the current position of
   # monitored log files.
-  config :sincedb_write_interval, :validate => :number, :default => 15000
+  config :sincedb_write_interval, :validate => :number, :default => 60000
 
   # Choose where Logstash starts initially reading files: at the beginning or
   # at the end. The default behavior treats files like live streams and thus
@@ -85,6 +85,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
     @random_key_prefix = SecureRandom.hex
     @offsets = ThreadSafe::Cache.new { |h,k| h[k] = Metriks.counter(counter_key(k)) }
+    @last_offsets = {}
     if @offset_path != "" and File.exist?(@offset_path)
       deseralize_offsets
     end
@@ -116,8 +117,9 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
       #pick SINCEDB_DIR if available, otherwise use HOME
       # sincedb_dir = ENV["SINCEDB_DIR"] || ENV["HOME"]
-      @tmp_dir = File.join(ENV["HOME"], ".efile_tmp_#{(rand*1000).to_i}/")
-      sincedb_dir = Dir.mkdir(@tmp_dir)
+      @tmp_dir = File.join(ENV["HOME"], ".efile_tmp_#{(rand*1000).to_i}")
+      Dir.mkdir(@tmp_dir)
+      sincedb_dir = @tmp_dir
 
       # Join by ',' to make it easy for folks to know their own sincedb
       # generated path (vs, say, inspecting the @path array)
@@ -153,23 +155,27 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         event["[@metadata][path]"] = path
         event["host"] = @host if !event.include?("host")
         event["path"] = path if !event.include?("path")
-        event["offset"] = @offsets[event['path'].to_s].count
-        decorate(event)
-        queue << event
+        if @last_offsets[event["path"].to_s].nil? or @last_offsets[event["path"].to_s] < @offsets[event['path'].to_s].count
+          event["offset"] = @offsets[event['path'].to_s].count
+          decorate(event)
+          queue << event
+        end
         @offsets[event['path'].to_s].increment
       end
     end
     finished
   end # def run
 
+  public
   def counter_key(key)
     "#{@random_key_prefix}_#{key}"
   end # def metric_key
 
   public
   def teardown
+    puts 'teardown'
     if @tail
-      @tail.sincedb_write
+#      @tail.sincedb_write
       @tail.quit
       @tail = nil
       FileUtils.rm_r(@tmp_dir)
@@ -181,30 +187,26 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
   private
   def seralize_offsets
-    if File.exist?(@offset_path)
-      File.delete(@offset_path)
-    end
     open(@offset_path, 'a') do |f|
       @offsets.each_pair do |path, counter|
-        f.puts "#{counter.count}:#{path}"
+        f.puts "#{path}:#{counter.count}"
         @offsets.delete(path)
       end
     end
+    @offset_path = ""
   end # seralize_offsets
 
   private 
   def deseralize_offsets
     open(@offset_path, 'r') do |f|
       f.each_line do |line|
-        parsed_line = line.split(':', 2)
+        parsed_line = line.reverse.split(':', 2).map(&:reverse)
         count = parsed_line[0].to_i
         name = parsed_line[1]
-        @offsets[name].clear
-        count.downto(1) { |_| @offsets[name].increment }
-        puts @offsets[name].count
+        # count.downto(1) { |_| @offsets[name].increment }
+        @last_offsets[name] = count
       end
     end
     File.delete(@offset_path)
   end # deseralize_offsets
-
-end # class LogStash::Inputs::File
+end
