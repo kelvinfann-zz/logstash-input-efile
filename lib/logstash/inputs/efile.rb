@@ -50,11 +50,11 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   # Where to write the sincedb database (keeps track of the current
   # position of monitored log files). The default will write
   # sincedb files to some path matching `$HOME/.sincedb*`
-  config :sincedb_path, :validate => :string
+  # config :sincedb_path, :validate => :string
 
   # How often (in seconds) to write a since database with the current position of
   # monitored log files.
-  config :sincedb_write_interval, :validate => :number, :default => 15
+  config :sincedb_write_interval, :validate => :number, :default => 15000
 
   # Choose where Logstash starts initially reading files: at the beginning or
   # at the end. The default behavior treats files like live streams and thus
@@ -79,6 +79,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     require "digest/md5"
     require "metriks"
     require "thread_safe"
+    require "fileutils"
     @logger.info("Registering file input", :path => @path)
     @host = Socket.gethostname.force_encoding(Encoding::UTF_8)
 
@@ -103,7 +104,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       end
     end
 
-    if @sincedb_path.nil?
+    # if @sincedb_path.nil?
       if ENV["SINCEDB_DIR"].nil? && ENV["HOME"].nil?
         @logger.error("No SINCEDB_DIR or HOME environment variable set, I don't know where " \
                       "to keep track of the files I'm watching. Either set " \
@@ -114,23 +115,25 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       end
 
       #pick SINCEDB_DIR if available, otherwise use HOME
-      sincedb_dir = ENV["SINCEDB_DIR"] || ENV["HOME"]
+      # sincedb_dir = ENV["SINCEDB_DIR"] || ENV["HOME"]
+      @tmp_dir = File.join(ENV["HOME"], ".efile_tmp_#{(rand*1000).to_i}/")
+      sincedb_dir = Dir.mkdir(@tmp_dir)
 
       # Join by ',' to make it easy for folks to know their own sincedb
       # generated path (vs, say, inspecting the @path array)
       @sincedb_path = File.join(sincedb_dir, ".sincedb_" + Digest::MD5.hexdigest(@path.join(",")))
 
       # Migrate any old .sincedb to the new file (this is for version <=1.1.1 compatibility)
-      old_sincedb = File.join(sincedb_dir, ".sincedb")
-      if File.exists?(old_sincedb)
-        @logger.info("Renaming old ~/.sincedb to new one", :old => old_sincedb,
-                     :new => @sincedb_path)
-        File.rename(old_sincedb, @sincedb_path)
-      end
+      # old_sincedb = File.join(sincedb_dir, ".sincedb")
+      # if File.exists?(old_sincedb)
+      #   @logger.info("Renaming old ~/.sincedb to new one", :old => old_sincedb,
+      #               :new => @sincedb_path)
+      #   File.rename(old_sincedb, @sincedb_path)
+      # end
 
       @logger.info("No sincedb_path set, generating one based on the file path",
                    :sincedb_path => @sincedb_path, :path => @path)
-    end
+    # end
 
     @tail_config[:sincedb_path] = @sincedb_path
 
@@ -169,6 +172,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       @tail.sincedb_write
       @tail.quit
       @tail = nil
+      FileUtils.rm_r(@tmp_dir)
     end
     if @offset_path != ""
       seralize_offsets
@@ -177,6 +181,9 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
   private
   def seralize_offsets
+    if File.exist?(@offset_path)
+      File.delete(@offset_path)
+    end
     open(@offset_path, 'a') do |f|
       @offsets.each_pair do |path, counter|
         f.puts "#{counter.count}:#{path}"
