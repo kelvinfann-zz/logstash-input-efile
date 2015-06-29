@@ -155,7 +155,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         event["[@metadata][path]"] = path
         event["host"] = @host if !event.include?("host")
         event["path"] = path if !event.include?("path")
-        if @last_offsets[event["path"].to_s].nil? or @last_offsets[event["path"].to_s] < @offsets[event['path'].to_s].count
+        if @last_offsets[event["path"].to_s].nil? or @last_offsets[event["path"].to_s] <= @offsets[event['path'].to_s].count
           event["offset"] = @offsets[event['path'].to_s].count
           decorate(event)
           queue << event
