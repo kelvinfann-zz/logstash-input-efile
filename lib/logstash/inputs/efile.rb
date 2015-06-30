@@ -87,7 +87,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     @offsets = ThreadSafe::Cache.new { |h,k| h[k] = Metriks.counter(counter_key(k)) }
     @last_offsets = {}
     if @offset_path != "" and File.exist?(@offset_path)
-      deseralize_offsets
+      ingest_offsets
     end
     @delm_len = @delimiter.bytesize
 
@@ -159,7 +159,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         event["offset"] = @offsets[event['path'].to_s].count
         decorate(event)
         queue << event
-        line.bytesize.downto(1-@delm_len){ |_| @offsets[event['path'].to_s].increment }
+        @offsets[event['path'].to_s].increment(line.bytesize+@delm_len)
       end
     end
     finished
@@ -173,7 +173,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   public
   def teardown
     if @offset_path != ""
-      seralize_offsets
+      write_offsets
       @offset_path = ""
     end
     if @tail
@@ -207,25 +207,24 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   end
 
   private
-  def seralize_offsets
+  def write_offsets
     open(@offset_path, 'a') do |f|
       @offsets.each_pair do |path, counter|
         f.puts "#{path}:#{counter.count}"
       end
     end
-  end # seralize_offsets
+  end # write_offsets
 
   private 
-  def deseralize_offsets
+  def ingest_offsets
     open(@offset_path, 'r') do |f|
       f.each_line do |line|
         parsed_line = line.reverse.split(':', 2).map(&:reverse)
         count = parsed_line[0].to_i
         name = parsed_line[1]
-        count.downto(1) { |_| @offsets[name].increment }
-        # @last_offsets[name] = count
+        @offsets[name].increment(count)
       end
     end
     File.delete(@offset_path)
-  end # deseralize_offsets
+  end # ingest_offsets
 end
