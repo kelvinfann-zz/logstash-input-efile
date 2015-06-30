@@ -50,7 +50,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   # Where to write the sincedb database (keeps track of the current
   # position of monitored log files). The default will write
   # sincedb files to some path matching `$HOME/.sincedb*`
-  # config :sincedb_path, :validate => :string
+  config :sincedb_path, :validate => :string
 
   # How often (in seconds) to write a since database with the current position of
   # monitored log files.
@@ -80,7 +80,6 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     require "digest/md5"
     require "metriks"
     require "thread_safe"
-    require "fileutils"
     @logger.info("Registering file input", :path => @path)
     @host = Socket.gethostname.force_encoding(Encoding::UTF_8)
 
@@ -90,6 +89,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     if @offset_path != "" and File.exist?(@offset_path)
       deseralize_offsets
     end
+    @delm_len = @delimiter.bytesize
 
     @tail_config = {
       :exclude => @exclude,
@@ -106,7 +106,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       end
     end
 
-    # if @sincedb_path.nil?
+    if @sincedb_path.nil?
       if ENV["SINCEDB_DIR"].nil? && ENV["HOME"].nil?
         @logger.error("No SINCEDB_DIR or HOME environment variable set, I don't know where " \
                       "to keep track of the files I'm watching. Either set " \
@@ -116,11 +116,11 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         raise # TODO(sissel): HOW DO I FAIL PROPERLY YO
       end
 
-      #pick SINCEDB_DIR if available, otherwise use HOME
-      # sincedb_dir = ENV["SINCEDB_DIR"] || ENV["HOME"]
-      @tmp_dir = File.join(ENV["HOME"], ".efile_tmp_#{(rand*1000).to_i}")
-      Dir.mkdir(@tmp_dir)
-      sincedb_dir = @tmp_dir
+      # pick SINCEDB_DIR if available, otherwise use HOME
+      sincedb_dir = ENV["SINCEDB_DIR"] || ENV["HOME"]
+      # @tmp_dir = File.join(ENV["HOME"], ".efile_tmp_#{(rand*1000).to_i}")
+      # Dir.mkdir(@tmp_dir)
+      # sincedb_dir = @tmp_dir
 
       # Join by ',' to make it easy for folks to know their own sincedb
       # generated path (vs, say, inspecting the @path array)
@@ -136,7 +136,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
       @logger.info("No sincedb_path set, generating one based on the file path",
                    :sincedb_path => @sincedb_path, :path => @path)
-    # end
+    end
 
     @tail_config[:sincedb_path] = @sincedb_path
 
@@ -156,12 +156,10 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         event["[@metadata][path]"] = path
         event["host"] = @host if !event.include?("host")
         event["path"] = path if !event.include?("path")
-        if @last_offsets[event["path"].to_s].nil? or @last_offsets[event["path"].to_s] <= @offsets[event['path'].to_s].count
-          event["offset"] = @offsets[event['path'].to_s].count
-          decorate(event)
-          queue << event
-        end
-        @offsets[event['path'].to_s].increment
+        event["offset"] = @offsets[event['path'].to_s].count
+        decorate(event)
+        queue << event
+        line.bytesize.downto(1-@delm_len){ |_| @offsets[event['path'].to_s].increment }
       end
     end
     finished
@@ -174,29 +172,47 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
   public
   def teardown
-    puts 'teardown'
-    if @tail
-#      @tail.sincedb_write
-      @tail.quit
-      @tail = nil
-      FileUtils.rm_r(@tmp_dir)
-    end
     if @offset_path != ""
       seralize_offsets
+      @offset_path = ""
+    end
+    if @tail
+      offsets = dbwrite_offsets 
+      @tail.quit
+      if File.exist?(@sincedb_path)
+        File.delete(@sincedb_path)
+      end 
+      open(@sincedb_path, 'a') do |f|
+        offsets.each {|line| f.puts line }
+      end
+      @tail = nil
     end
   end # def teardown
+
+  private
+  def dbwrite_offsets
+    puts @sincedb_path
+    offsets = []
+    open(@sincedb_path, 'a') do |f|
+      @offsets.each_pair do |path, counter|
+        stat = File::Stat.new(path)
+        entry = [@tail.sincedb_record_uid(path, stat), counter.count.to_s].flatten.join(" ")
+        f.puts entry
+        puts entry
+        offsets += [entry]
+        @offsets.delete(path)
+      end
+    end
+    return offsets
+  end
 
   private
   def seralize_offsets
     open(@offset_path, 'a') do |f|
       @offsets.each_pair do |path, counter|
         f.puts "#{path}:#{counter.count}"
-        @offsets.delete(path)
-        stat = File::Stat.new(path)
-        puts @tail.sincedb_record_uid(path, stat)
       end
     end
-    @offset_path = ""
   end # seralize_offsets
 
   private 
@@ -206,8 +222,8 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         parsed_line = line.reverse.split(':', 2).map(&:reverse)
         count = parsed_line[0].to_i
         name = parsed_line[1]
-        # count.downto(1) { |_| @offsets[name].increment }
-        @last_offsets[name] = count
+        count.downto(1) { |_| @offsets[name].increment }
+        # @last_offsets[name] = count
       end
     end
     File.delete(@offset_path)
