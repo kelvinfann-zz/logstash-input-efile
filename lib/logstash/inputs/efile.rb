@@ -73,6 +73,10 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   # set where the offsets are stored
   config :offset_path, :validate => :string, :default => ""
 
+  # Mark true if you are using a logstash-output that also keeps track of the offsets.
+  # If so, the plugin will no longer write to the offsets files--only read.
+  config :using_eoutput, :validate => :boolean, :default => false  
+
   public
   def register
     require "addressable/uri"
@@ -118,9 +122,6 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
       # pick SINCEDB_DIR if available, otherwise use HOME
       sincedb_dir = ENV["SINCEDB_DIR"] || ENV["HOME"]
-      # @tmp_dir = File.join(ENV["HOME"], ".efile_tmp_#{(rand*1000).to_i}")
-      # Dir.mkdir(@tmp_dir)
-      # sincedb_dir = @tmp_dir
 
       # Join by ',' to make it easy for folks to know their own sincedb
       # generated path (vs, say, inspecting the @path array)
@@ -177,7 +178,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       @offset_path = ""
     end
     if @tail
-      offsets = dbwrite_offsets 
+      offsets = dbget_offsets 
       @tail.quit
       if File.exist?(@sincedb_path)
         File.delete(@sincedb_path)
@@ -190,7 +191,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   end # def teardown
 
   private
-  def dbwrite_offsets
+  def dbget_offsets
     puts @sincedb_path
     offsets = []
     open(@sincedb_path, 'a') do |f|
