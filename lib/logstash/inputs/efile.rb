@@ -127,14 +127,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       # generated path (vs, say, inspecting the @path array)
       @sincedb_path = File.join(sincedb_dir, ".sincedb_" + Digest::MD5.hexdigest(@path.join(",")))
 
-      # Migrate any old .sincedb to the new file (this is for version <=1.1.1 compatibility)
-      # old_sincedb = File.join(sincedb_dir, ".sincedb")
-      # if File.exists?(old_sincedb)
-      #   @logger.info("Renaming old ~/.sincedb to new one", :old => old_sincedb,
-      #               :new => @sincedb_path)
-      #   File.rename(old_sincedb, @sincedb_path)
-      # end
-
+      
       @logger.info("No sincedb_path set, generating one based on the file path",
                    :sincedb_path => @sincedb_path, :path => @path)
     end
@@ -144,6 +137,9 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     if @start_position == "beginning"
       @tail_config[:start_new_files_at] = :beginning
     end
+    @tail = FileWatch::Tail.new(@tail_config)
+    dbwrite_offsets
+
   end # def register
 
   public
@@ -177,29 +173,34 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       write_offsets
       @offset_path = ""
     end
-    if @tail
-      offsets = dbget_offsets 
+    if @tail and !@using_eoutput
       @tail.quit
-      if File.exist?(@sincedb_path)
-        File.delete(@sincedb_path)
-      end 
-      open(@sincedb_path, 'a') do |f|
-        offsets.each {|line| f.puts line }
-      end
       @tail = nil
     end
   end # def teardown
 
   private
+  def dbwrite_offsets
+    offsets = dbget_offsets
+    @tail.quit
+    if File.exist?(@sincedb_path)
+      File.delete(@sincedb_path)
+    end
+    open(@sincedb_path, 'a') do |f|
+      offsets.each {|line| f.puts line }
+    end
+    @tail = nil
+  end   
+    
+
+  private
   def dbget_offsets
-    puts @sincedb_path
     offsets = []
     open(@sincedb_path, 'a') do |f|
       @offsets.each_pair do |path, counter|
         stat = File::Stat.new(path)
         entry = [@tail.sincedb_record_uid(path, stat), counter.count.to_s].flatten.join(" ")
         f.puts entry
-        puts entry
         offsets += [entry]
         @offsets.delete(path)
       end
