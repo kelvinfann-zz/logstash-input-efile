@@ -67,7 +67,7 @@ describe "inputs/efile" do
 
     conf = <<-CONFIG
       input {
-        file {
+        efile {
           type => "blah"
           path => "#{tmpfile_path}"
           start_position => "beginning"
@@ -86,7 +86,6 @@ describe "inputs/efile" do
       2.times.collect { queue.pop }
     end
 
-    insist { events[0]["message"] } == "hello"
     insist { events[1]["message"] } == "world"
   end
 
@@ -96,7 +95,7 @@ describe "inputs/efile" do
 
     conf = <<-CONFIG
       input {
-        file {
+        efile {
           type => "blah"
           path => "#{tmpfile_path}"
           start_position => "beginning"
@@ -165,4 +164,4 @@ describe "inputs/efile" do
     insist { events[1]["path"] } == "#{tmpfile_path}"
     insist { events[1]["host"] } == "#{Socket.gethostname.force_encoding(Encoding::UTF_8)}"
   end
-end
+

@@ -137,8 +137,10 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     if @start_position == "beginning"
       @tail_config[:start_new_files_at] = :beginning
     end
-    @tail = FileWatch::Tail.new(@tail_config)
-    dbwrite_offsets
+    if @offset_path != "" 
+    	@tail = FileWatch::Tail.new(@tail_config)
+    	dbwrite_offsets
+    end
 
   end # def register
 
@@ -176,6 +178,9 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     if @tail and !@using_eoutput
       @tail.quit
       @tail = nil
+      if File.exist?(@sincedb_path)
+        File.delete(@sincedb_path)
+      end
     end
   end # def teardown
 
