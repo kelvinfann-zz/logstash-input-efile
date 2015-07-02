@@ -67,7 +67,6 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
   config :start_position, :validate => [ "beginning", "end"], :default => "end"
 
   # set the new line delimiter, defaults to "\n"
-  # TODO: Make sure of the delimiter byte size
   config :delimiter, :validate => :string, :default => "\n"
 
   # set where the offsets are stored
@@ -90,7 +89,7 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
     @random_key_prefix = SecureRandom.hex
     @offsets = ThreadSafe::Cache.new { |h,k| h[k] = Metriks.counter(counter_key(k)) }
     @last_offsets = {}
-    if @offset_path != "" and File.exist?(@offset_path)
+    if @offset_path != "" && File.exist?(@offset_path)
       ingest_offsets
     end
     @delm_len = @delimiter.bytesize
@@ -176,12 +175,12 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       write_offsets
       @offset_path = ""
     end
-    if @tail and !@using_eoutput
+    if @tail && !@using_eoutput
       @tail.quit
-      @tail = nil
       if File.exist?(@sincedb_path)
         File.delete(@sincedb_path)
       end
+      @tail = nil
     end
   end # def teardown
 
