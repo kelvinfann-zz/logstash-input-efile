@@ -101,6 +101,7 @@ describe "inputs/efile" do
           start_position => "beginning"
           sincedb_path => "#{sincedb_path}"
           delimiter => "#{delimiter}"
+          offset_path => "#{sincedb_path}.tmp"
         }
       }
     CONFIG
@@ -164,4 +165,4 @@ describe "inputs/efile" do
     insist { events[1]["path"] } == "#{tmpfile_path}"
     insist { events[1]["host"] } == "#{Socket.gethostname.force_encoding(Encoding::UTF_8)}"
   end
-
+end

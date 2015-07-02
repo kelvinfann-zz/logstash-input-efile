@@ -156,9 +156,10 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         event["host"] = @host if !event.include?("host")
         event["path"] = path if !event.include?("path")
         event["offset"] = @offsets[event['path'].to_s].count
+        event["msg_len"] = line.bytesize + @delm_len
         decorate(event)
         queue << event
-        @offsets[event['path'].to_s].increment(line.bytesize+@delm_len)
+        @offsets[event['path'].to_s].increment(event["msg_len"])
       end
     end
     finished
