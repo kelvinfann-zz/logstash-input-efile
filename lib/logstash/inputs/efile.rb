@@ -153,12 +153,12 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
       @codec.decode(line) do |event|
         event["[@metadata][path]"] = path
         event["host"] = @host if !event.include?("host")
-        event["path"] = path if !event.include?("path")
-        event["offset"] = @offsets[event['path'].to_s].count
+        event["orig_path"] = path if !event.include?("path")
+        event["offset"] = @offsets[event['orig_path'].to_s].count
         event["msg_len"] = line.bytesize + @delm_len
         decorate(event)
         queue << event
-        @offsets[event['path'].to_s].increment(event["msg_len"])
+        @offsets[event['orig_path'].to_s].increment(event["msg_len"])
       end
     end
     finished
@@ -171,11 +171,11 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
   public
   def teardown
-    if @offset_path != ""
+    if @offset_path != "" && !@using_eoutput
       write_offsets
       @offset_path = ""
     end
-    if @tail && !@using_eoutput
+    if @tail 
       @tail.quit
       if File.exist?(@sincedb_path)
         File.delete(@sincedb_path)
