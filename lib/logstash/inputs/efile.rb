@@ -207,7 +207,6 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         entry = [@tail.sincedb_record_uid(path, stat), counter.count.to_s].flatten.join(" ")
         f.puts entry
         offsets += [entry]
-        @offsets.delete(path)
       end
     end
     return offsets
