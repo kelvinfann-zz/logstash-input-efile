@@ -231,10 +231,8 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         parsed_line = line.reverse.split(':', 2).map(&:reverse)
         count = parsed_line[0].to_i
         name = parsed_line[1]
-        puts '2'
         increment_amount = [@offsets[name].count, count].max - @offsets[name].count
         @offsets[name].increment(increment_amount)
-        puts '3'
       end
     end
   end # ingest_offsets
