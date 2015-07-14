@@ -214,6 +214,10 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
 
   private
   def write_offsets
+    if File.exist?(@offset_path) && !using_eoutput
+      ingest_offsets
+      File.delete(@offset_path)
+    end
     open(@offset_path, 'a') do |f|
       @offsets.each_pair do |path, counter|
         f.puts "#{path}:#{counter.count}"
@@ -228,9 +232,9 @@ class LogStash::Inputs::Efile < LogStash::Inputs::Base
         parsed_line = line.reverse.split(':', 2).map(&:reverse)
         count = parsed_line[0].to_i
         name = parsed_line[1]
-        @offsets[name].increment(count)
+        increment_amount = [@offsets[name].value, count].max - @offsets[name].value
+        @offsets[name].increment(increment_amount)
       end
     end
-    File.delete(@offset_path)
   end # ingest_offsets
 end
